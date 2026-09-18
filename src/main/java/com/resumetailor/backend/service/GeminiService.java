@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.resumetailor.backend.dto.TailorResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -46,15 +47,20 @@ public class GeminiService {
                 )
         );
 
-        String rawResponse = restClient.post()
+        String rawResponse;
+        try {
+            rawResponse = restClient.post()
                 .uri(uriBuilder -> uriBuilder
-                        .path("/models/{model}:generateContent")
-                        .queryParam("key", apiKey)
-                        .build(model))
+                    .path("/models/{model}:generateContent")
+                    .queryParam("key", apiKey)
+                    .build(model))
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
                 .body(String.class);
+        } catch (HttpClientErrorException.TooManyRequests e) {
+            throw new IllegalStateException("Daily AI quota reached. Please try again after the quota resets.");
+        }
 
         String geminiText = extractTextFromResponse(rawResponse);
         return parseTailorJson(geminiText, isLatex);

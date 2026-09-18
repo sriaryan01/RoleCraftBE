@@ -18,6 +18,10 @@ import java.util.Map;
 @RequestMapping("/api")
 public class ResumeController {
 
+    private static final java.util.regex.Pattern JOB_DESCRIPTION_SIGNAL = java.util.regex.Pattern.compile(
+            "\\b(role|responsibilit(?:y|ies)|requirements?|qualifications?|experience|skills?|developer|engineer|intern|position|work|build|design|develop|manage|team|candidate|knowledge|proficient|fresher)\\b",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
     private final ResumeExtractionService extractionService;
     private final GeminiService geminiService;
     private final DocxGenerationService docxGenerationService;
@@ -35,13 +39,23 @@ public class ResumeController {
             @RequestParam("resume") MultipartFile resumeFile,
             @RequestParam("jobDescription") String jobDescription) throws Exception {
 
-        if (jobDescription == null || jobDescription.isBlank()) {
-            throw new IllegalArgumentException("Job description is required.");
+        if (!isMeaningfulJobDescription(jobDescription)) {
+            throw new IllegalArgumentException(
+                    "Please enter a meaningful job description with responsibilities, skills, experience, or role details.");
         }
 
         ResumeExtractionService.ExtractedResume extracted = extractionService.extractText(resumeFile);
         TailorResponse response = geminiService.tailorResume(extracted.text(), jobDescription, extracted.isLatex());
         return ResponseEntity.ok(response);
+    }
+
+    private boolean isMeaningfulJobDescription(String jobDescription) {
+        if (jobDescription == null || jobDescription.isBlank()) {
+            return false;
+        }
+        String normalized = jobDescription.trim().replaceAll("\\s+", " ");
+        int wordCount = normalized.split(" ").length;
+        return normalized.length() >= 30 && wordCount >= 6 && JOB_DESCRIPTION_SIGNAL.matcher(normalized).find();
     }
 
     @PostMapping("/tailor/docx")
