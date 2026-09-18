@@ -1,0 +1,17 @@
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Java build output
+/target/
+/bin/
+/out/
+
+# IDE / editor files
+.idea/
+.vscode/
+*.iml
+
+# Logs
+*.log
