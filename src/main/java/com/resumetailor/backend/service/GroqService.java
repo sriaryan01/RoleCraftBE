@@ -9,57 +9,57 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 
 @Service
-public class GeminiService extends ResumeAiService {
+public class GroqService extends ResumeAiService {
 
     private final RestClient client;
 
-    @Value("${gemini.api.key:}")
+    @Value("${groq.api.key:}")
     private String apiKey;
 
-    @Value("${gemini.api.model:gemini-3.6-flash}")
+    @Value("${groq.api.model:openai/gpt-oss-120b}")
     private String model;
 
-    public GeminiService(RestClient.Builder builder) {
-        this.client = builder.baseUrl("https://generativelanguage.googleapis.com/v1beta").build();
+    public GroqService(RestClient.Builder builder) {
+        this.client = builder.baseUrl("https://api.groq.com/openai/v1").build();
     }
 
     @Override
     public TailorResponse tailorResume(String resumeText, String jobDescription, boolean isLatex) {
         requireApiKey();
-        Map<String, Object> body = Map.of(
-                "contents", List.of(
-                        Map.of("role", "user", "parts", List.of(Map.of("text", buildPrompt(resumeText, jobDescription, isLatex))))
-                ),
-                "generationConfig", Map.of(
-                        "temperature", 0.4,
-                        "responseMimeType", "application/json"
-                )
-        );
+        Map<String, Object> body = new HashMap<>();
+        body.put("model", model);
+        body.put("messages", List.of(Map.of(
+            "role", "user",
+            "content", buildPrompt(resumeText, jobDescription, isLatex))));
+        body.put("temperature", 0.4);
+        body.put("max_completion_tokens", 8192);
+        if (!isLatex) {
+            body.put("response_format", Map.of("type", "json_object"));
+        }
 
         try {
             String rawResponse = client.post()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/models/{model}:generateContent")
-                            .queryParam("key", apiKey)
-                            .build(model))
+                    .uri("/chat/completions")
                     .contentType(MediaType.APPLICATION_JSON)
+                    .header("Authorization", "Bearer " + apiKey)
                     .body(body)
                     .retrieve()
                     .body(String.class);
             return parseTailorJson(extractText(rawResponse), isLatex);
         } catch (HttpClientErrorException.TooManyRequests e) {
-            throw new IllegalStateException("Gemini rate limit reached. Please try again later.");
+            throw new IllegalStateException("Groq rate limit reached. Please try again later.");
         }
     }
 
     private void requireApiKey() {
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
-                    "GEMINI_API_KEY is not set. Get a key at https://aistudio.google.com/apikey "
-                            + "and export it as an environment variable before starting the backend.");
+                    "GROQ_API_KEY is not set. Add it to backend/.env or export it as an "
+                            + "environment variable before starting the backend.");
         }
     }
 
@@ -68,21 +68,20 @@ public class GeminiService extends ResumeAiService {
             JsonNode root = mapper.readTree(rawResponse);
             JsonNode errorNode = root.path("error").path("message");
             if (!errorNode.isMissingNode()) {
-                throw new IllegalStateException("Gemini API error: " + errorNode.asText());
+                throw new IllegalStateException("Groq API error: " + errorNode.asText());
             }
 
-            JsonNode textNode = root.path("candidates").path(0)
-                    .path("content").path("parts").path(0).path("text");
+            JsonNode textNode = root.path("choices").path(0).path("message").path("content");
             if (textNode.isMissingNode() || textNode.asText().isBlank()) {
-                JsonNode finishReason = root.path("candidates").path(0).path("finishReason");
+                JsonNode finishReason = root.path("choices").path(0).path("finish_reason");
                 throw new IllegalStateException(
-                        "Gemini returned no text (finishReason: " + finishReason.asText("unknown") + ").");
+                        "Groq returned no text (finishReason: " + finishReason.asText("unknown") + ").");
             }
             return textNode.asText();
         } catch (IllegalStateException e) {
             throw e;
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to parse Gemini API response: " + e.getMessage(), e);
+            throw new IllegalStateException("Failed to parse Groq API response: " + e.getMessage(), e);
         }
     }
 }

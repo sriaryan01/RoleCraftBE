@@ -11,7 +11,7 @@ import java.util.Arrays;
 @Configuration
 public class CorsConfig {
 
-    @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:5174,http://localhost:5175,https://role-craft-bfpwswu49-sriaryan01s-projects.vercel.app}")
+    @Value("${app.cors.allowed-origins:http://localhost:5174,http://localhost:5175,https://role-craft-bfpwswu49-sriaryan01s-projects.vercel.app,http://localhost:5173}")
     private String allowedOrigins;
 
     @Bean

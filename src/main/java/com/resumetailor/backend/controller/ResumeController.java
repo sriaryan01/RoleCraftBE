@@ -2,8 +2,9 @@ package com.resumetailor.backend.controller;
 
 import com.resumetailor.backend.dto.ErrorResponse;
 import com.resumetailor.backend.dto.TailorResponse;
-import com.resumetailor.backend.service.GeminiService;
+import com.resumetailor.backend.service.AiService;
 import com.resumetailor.backend.service.DocxGenerationService;
+import com.resumetailor.backend.service.PdfGenerationService;
 import com.resumetailor.backend.service.ResumeExtractionService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -23,15 +24,18 @@ public class ResumeController {
             java.util.regex.Pattern.CASE_INSENSITIVE);
 
     private final ResumeExtractionService extractionService;
-    private final GeminiService geminiService;
+    private final AiService aiService;
     private final DocxGenerationService docxGenerationService;
+    private final PdfGenerationService pdfGenerationService;
 
     public ResumeController(ResumeExtractionService extractionService,
-                             GeminiService geminiService,
-                             DocxGenerationService docxGenerationService) {
+                             AiService aiService,
+                             DocxGenerationService docxGenerationService,
+                             PdfGenerationService pdfGenerationService) {
         this.extractionService = extractionService;
-        this.geminiService = geminiService;
+        this.aiService = aiService;
         this.docxGenerationService = docxGenerationService;
+        this.pdfGenerationService = pdfGenerationService;
     }
 
     @PostMapping(value = "/tailor", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -45,7 +49,7 @@ public class ResumeController {
         }
 
         ResumeExtractionService.ExtractedResume extracted = extractionService.extractText(resumeFile);
-        TailorResponse response = geminiService.tailorResume(extracted.text(), jobDescription, extracted.isLatex());
+        TailorResponse response = aiService.tailorResume(extracted.text(), jobDescription, extracted.isLatex());
         return ResponseEntity.ok(response);
     }
 
@@ -84,6 +88,25 @@ public class ResumeController {
                 .contentType(MediaType.parseMediaType("application/x-tex"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"tailored-resume.tex\"")
                 .body(tex);
+    }
+
+    @PostMapping(value = "/tailor/pdf", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<byte[]> downloadPdf(
+            @RequestPart("resume") MultipartFile originalResume,
+            @RequestParam("tailoredResume") String tailoredResume) throws Exception {
+        if (originalResume == null || originalResume.isEmpty()
+                || originalResume.getOriginalFilename() == null
+                || !originalResume.getOriginalFilename().toLowerCase().endsWith(".pdf")) {
+            throw new IllegalArgumentException("The original PDF resume is required.");
+        }
+        if (tailoredResume == null || tailoredResume.isBlank()) {
+            throw new IllegalArgumentException("No tailored resume text provided.");
+        }
+        byte[] pdf = pdfGenerationService.generatePdf(originalResume.getBytes(), tailoredResume);
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"tailored-resume.pdf\"")
+                .body(pdf);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
